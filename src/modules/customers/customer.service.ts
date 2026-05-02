@@ -1,5 +1,6 @@
 import { AppDataSource } from '../../config/database';
 import { AuditService } from '../admin-core/services/audit.service';
+import { PlatformConfigAdminService } from '../platform-config/platform-config.service';
 import { Customer } from './entities/Customer';
 import { Coupon } from './entities/Coupon';
 import { Occupation } from './entities/Occupation';
@@ -9,6 +10,7 @@ import { UpdateOccupationDto } from './dto/update-occupation.dto';
 
 export class CustomerAdminService {
   private audit = new AuditService();
+  private platformConfig = new PlatformConfigAdminService();
 
   async listCustomers(limit: number, offset: number): Promise<{ items: Customer[]; total: number }> {
     const repo = AppDataSource.getRepository(Customer);
@@ -197,11 +199,57 @@ export class CustomerAdminService {
     return this.listOccupations();
   }
 
+  /** Occupations plus per-row customer counts and total registered customers (for admin Occupations page). */
+  async listOccupationsWithCustomerCounts(includeInactive: boolean): Promise<{
+    items: Array<Occupation & { customerCount: number }>;
+    totalCustomers: number;
+  }> {
+    const occRepo = AppDataSource.getRepository(Occupation);
+    const custRepo = AppDataSource.getRepository(Customer);
+    const qb = occRepo.createQueryBuilder('o');
+    if (!includeInactive) {
+      qb.where('o.isActive = :ia', { ia: true });
+    }
+    qb.orderBy('o.sort_order', 'ASC').addOrderBy('o.name', 'ASC');
+    const items = await qb.getMany();
+    const totalCustomers = await custRepo.count();
+    if (items.length === 0) {
+      return { items: [], totalCustomers };
+    }
+    const raw = await custRepo
+      .createQueryBuilder('c')
+      .select('c.occupation_id', 'occupationId')
+      .addSelect('COUNT(c.id)', 'cnt')
+      .where('c.occupation_id IS NOT NULL')
+      .groupBy('c.occupation_id')
+      .getRawMany();
+    const map = new Map<string, number>();
+    for (const r of raw as Record<string, unknown>[]) {
+      const k = r.occupationId ?? r.occupation_id;
+      const cnt = r.cnt ?? r.COUNT_c_id;
+      if (k != null) map.set(String(k), parseInt(String(cnt), 10));
+    }
+    return {
+      items: items.map(o => ({ ...o, customerCount: map.get(o.id) ?? 0 })),
+      totalCustomers,
+    };
+  }
+
+  async getOccupationWithCustomerCount(id: string): Promise<(Occupation & { customerCount: number }) | null> {
+    const o = await this.getOccupation(id);
+    if (!o) return null;
+    const customerCount = await AppDataSource.getRepository(Customer).count({ where: { occupationId: id } });
+    return { ...o, customerCount };
+  }
+
   async createOccupation(
     dto: CreateOccupationDto,
     actorSub: string,
     ip: string | undefined
   ): Promise<Occupation> {
+    if (!(await this.platformConfig.isOccupationAdminCreateEnabled())) {
+      throw new Error('OCCUPATION_CREATE_DISABLED');
+    }
     const repo = AppDataSource.getRepository(Occupation);
     const row = repo.create({
       name: dto.name,

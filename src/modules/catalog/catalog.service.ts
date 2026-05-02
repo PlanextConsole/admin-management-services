@@ -1,33 +1,51 @@
-import { Repository } from 'typeorm';
 import { AppDataSource } from '../../config/database';
 import { AuditService } from '../admin-core/services/audit.service';
-import { CatalogCategory } from './entities/CatalogCategory';
+import { ProductCategory } from './entities/ProductCategory';
+import { ProductSubcategory } from './entities/ProductSubcategory';
+import { ServiceCategory } from './entities/ServiceCategory';
 import { CatalogServiceItem } from './entities/CatalogServiceItem';
+import { VendorService as CatalogVendorServiceLink } from './entities/VendorService';
+import { Vendor } from '../vendors/entities/Vendor';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateCatalogServiceDto } from './dto/create-catalog-service.dto';
 import { UpdateCatalogServiceDto } from './dto/update-catalog-service.dto';
+import { CreateVendorServiceDto } from './dto/create-vendor-service.dto';
+import { UpdateVendorServiceDto } from './dto/update-vendor-service.dto';
 
 export class CatalogAdminService {
   private audit = new AuditService();
 
-  async listCategories(includeInactive: boolean): Promise<CatalogCategory[]> {
-    const repo = AppDataSource.getRepository(CatalogCategory);
+  /**
+   * Emergency / priceType / duration are stored in JSON `metadata` so MySQL does not need
+   * extra columns (avoids "Unknown column ... in field list" when schema was not migrated).
+   * API responses still expose them at the top level like regular columns.
+   */
+  private enrichServiceRow(row: CatalogServiceItem): Record<string, unknown> {
+    const m = (row.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as Record<string, unknown>;
+    return {
+      ...row,
+      categoryId: row.serviceCategoryId,
+      emergency: typeof m.emergency === 'boolean' ? m.emergency : false,
+      priceType: typeof m.priceType === 'string' ? m.priceType : null,
+      duration: typeof m.duration === 'string' ? m.duration : null,
+    };
+  }
+
+  // ─── Product categories (shop roots) ───
+  async listProductCategories(includeInactive: boolean): Promise<ProductCategory[]> {
+    const repo = AppDataSource.getRepository(ProductCategory);
     const qb = repo.createQueryBuilder('c').orderBy('c.sortOrder', 'ASC').addOrderBy('c.name', 'ASC');
     if (!includeInactive) qb.andWhere('c.isActive = :a', { a: true });
     return qb.getMany();
   }
 
-  async getCategory(id: string): Promise<CatalogCategory | null> {
-    return AppDataSource.getRepository(CatalogCategory).findOne({ where: { id } });
+  async getProductCategory(id: string): Promise<ProductCategory | null> {
+    return AppDataSource.getRepository(ProductCategory).findOne({ where: { id } });
   }
 
-  async createCategory(dto: CreateCategoryDto, actorSub: string, ip: string | undefined): Promise<CatalogCategory> {
-    const repo = AppDataSource.getRepository(CatalogCategory);
-    if (dto.parentId) {
-      const p = await repo.findOne({ where: { id: dto.parentId } });
-      if (!p) throw new Error('Parent category not found');
-    }
+  async createProductCategory(dto: CreateCategoryDto, actorSub: string, ip: string | undefined): Promise<ProductCategory> {
+    const repo = AppDataSource.getRepository(ProductCategory);
     const row = repo.create({
       name: dto.name,
       availability: dto.availability ?? false,
@@ -35,7 +53,6 @@ export class CatalogAdminService {
       trending: dto.trending ?? false,
       description: dto.description ?? null,
       slug: dto.slug ?? null,
-      parentId: dto.parentId ?? null,
       thumbnailUrl: dto.thumbnailUrl ?? null,
       bannerUrls: dto.bannerUrls ?? null,
       iconUrl: dto.iconUrl ?? null,
@@ -47,7 +64,7 @@ export class CatalogAdminService {
     await this.audit.log({
       actorSub,
       action: 'CREATE',
-      entityType: 'CatalogCategory',
+      entityType: 'ProductCategory',
       entityId: row.id,
       metadata: { name: row.name },
       ipAddress: ip ?? null,
@@ -55,20 +72,10 @@ export class CatalogAdminService {
     return row;
   }
 
-  async updateCategory(id: string, dto: UpdateCategoryDto, actorSub: string, ip: string | undefined): Promise<CatalogCategory> {
-    const repo = AppDataSource.getRepository(CatalogCategory);
+  async updateProductCategory(id: string, dto: UpdateCategoryDto, actorSub: string, ip: string | undefined): Promise<ProductCategory> {
+    const repo = AppDataSource.getRepository(ProductCategory);
     const row = await repo.findOne({ where: { id } });
-    if (!row) throw new Error('Category not found');
-    if (dto.parentId !== undefined) {
-      if (dto.parentId === id) throw new Error('Category cannot be its own parent');
-      if (dto.parentId) {
-        const p = await repo.findOne({ where: { id: dto.parentId } });
-        if (!p) throw new Error('Parent category not found');
-        const cycle = await this.isCategoryDescendant(repo, id, dto.parentId);
-        if (cycle) throw new Error('Invalid parent: would create a cycle');
-      }
-      row.parentId = dto.parentId;
-    }
+    if (!row) throw new Error('Product category not found');
     if (dto.name !== undefined) row.name = dto.name;
     if (dto.availability !== undefined) row.availability = dto.availability;
     if (dto.emergency !== undefined) row.emergency = dto.emergency;
@@ -85,7 +92,7 @@ export class CatalogAdminService {
     await this.audit.log({
       actorSub,
       action: 'UPDATE',
-      entityType: 'CatalogCategory',
+      entityType: 'ProductCategory',
       entityId: row.id,
       metadata: { changes: dto },
       ipAddress: ip ?? null,
@@ -93,61 +100,240 @@ export class CatalogAdminService {
     return row;
   }
 
-  private async isCategoryDescendant(repo: Repository<CatalogCategory>, rootId: string, candidateParentId: string): Promise<boolean> {
-    let current: string | null = candidateParentId;
-    const visited = new Set<string>();
-    while (current) {
-      if (current === rootId) return true;
-      if (visited.has(current)) return true;
-      visited.add(current);
-      const r = await repo.findOne({ where: { id: current } });
-      current = r?.parentId ?? null;
-    }
-    return false;
-  }
-
-  async deleteCategory(id: string, actorSub: string, ip: string | undefined): Promise<void> {
-    const repo = AppDataSource.getRepository(CatalogCategory);
+  async deleteProductCategory(id: string, actorSub: string, ip: string | undefined): Promise<void> {
+    const sRepo = AppDataSource.getRepository(ProductSubcategory);
+    await sRepo.delete({ productCategoryId: id });
+    const repo = AppDataSource.getRepository(ProductCategory);
     const row = await repo.findOne({ where: { id } });
-    if (!row) throw new Error('Category not found');
+    if (!row) throw new Error('Product category not found');
     await repo.remove(row);
     await this.audit.log({
       actorSub,
       action: 'DELETE',
-      entityType: 'CatalogCategory',
+      entityType: 'ProductCategory',
       entityId: id,
       metadata: { name: row.name },
       ipAddress: ip ?? null,
     });
   }
 
-  async getService(id: string): Promise<CatalogServiceItem | null> {
-    return AppDataSource.getRepository(CatalogServiceItem).findOne({ where: { id } });
-  }
-
-  async listServices(includeInactive: boolean): Promise<CatalogServiceItem[]> {
-    const repo = AppDataSource.getRepository(CatalogServiceItem);
+  // ─── Product subcategories ───
+  async listProductSubcategories(includeInactive: boolean): Promise<ProductSubcategory[]> {
+    const repo = AppDataSource.getRepository(ProductSubcategory);
     const qb = repo.createQueryBuilder('s').orderBy('s.sortOrder', 'ASC').addOrderBy('s.name', 'ASC');
     if (!includeInactive) qb.andWhere('s.isActive = :a', { a: true });
     return qb.getMany();
   }
 
-  async createService(dto: CreateCatalogServiceDto, actorSub: string, ip: string | undefined): Promise<CatalogServiceItem> {
+  async getProductSubcategory(id: string): Promise<ProductSubcategory | null> {
+    return AppDataSource.getRepository(ProductSubcategory).findOne({ where: { id } });
+  }
+
+  /** Reuses CreateCategoryDto.parentId as product_category_id */
+  async createProductSubcategory(dto: CreateCategoryDto, actorSub: string, ip: string | undefined): Promise<ProductSubcategory> {
+    if (!dto.parentId?.trim()) throw new Error('Parent product category is required');
+    const p = await this.getProductCategory(dto.parentId);
+    if (!p) throw new Error('Product category not found');
+    const repo = AppDataSource.getRepository(ProductSubcategory);
+    const row = repo.create({
+      productCategoryId: dto.parentId,
+      name: dto.name,
+      availability: dto.availability ?? false,
+      emergency: dto.emergency ?? false,
+      trending: dto.trending ?? false,
+      description: dto.description ?? null,
+      slug: dto.slug ?? null,
+      thumbnailUrl: dto.thumbnailUrl ?? null,
+      bannerUrls: dto.bannerUrls ?? null,
+      sortOrder: dto.sortOrder ?? 0,
+      isActive: dto.isActive ?? true,
+      metadata: dto.metadata ?? null,
+    });
+    await repo.save(row);
+    await this.audit.log({
+      actorSub,
+      action: 'CREATE',
+      entityType: 'ProductSubcategory',
+      entityId: row.id,
+      metadata: { name: row.name },
+      ipAddress: ip ?? null,
+    });
+    return row;
+  }
+
+  async updateProductSubcategory(id: string, dto: UpdateCategoryDto, actorSub: string, ip: string | undefined): Promise<ProductSubcategory> {
+    const repo = AppDataSource.getRepository(ProductSubcategory);
+    const row = await repo.findOne({ where: { id } });
+    if (!row) throw new Error('Product subcategory not found');
+    if (dto.parentId !== undefined) {
+      if (dto.parentId) {
+        const p = await this.getProductCategory(dto.parentId);
+        if (!p) throw new Error('Product category not found');
+        row.productCategoryId = dto.parentId;
+      }
+    }
+    if (dto.name !== undefined) row.name = dto.name;
+    if (dto.availability !== undefined) row.availability = dto.availability;
+    if (dto.emergency !== undefined) row.emergency = dto.emergency;
+    if (dto.trending !== undefined) row.trending = dto.trending;
+    if (dto.description !== undefined) row.description = dto.description;
+    if (dto.slug !== undefined) row.slug = dto.slug;
+    if (dto.thumbnailUrl !== undefined) row.thumbnailUrl = dto.thumbnailUrl;
+    if (dto.bannerUrls !== undefined) row.bannerUrls = dto.bannerUrls;
+    if (dto.sortOrder !== undefined) row.sortOrder = dto.sortOrder;
+    if (dto.isActive !== undefined) row.isActive = dto.isActive;
+    if (dto.metadata !== undefined) row.metadata = dto.metadata;
+    await repo.save(row);
+    await this.audit.log({
+      actorSub,
+      action: 'UPDATE',
+      entityType: 'ProductSubcategory',
+      entityId: row.id,
+      metadata: { changes: dto },
+      ipAddress: ip ?? null,
+    });
+    return row;
+  }
+
+  async deleteProductSubcategory(id: string, actorSub: string, ip: string | undefined): Promise<void> {
+    const repo = AppDataSource.getRepository(ProductSubcategory);
+    const row = await repo.findOne({ where: { id } });
+    if (!row) throw new Error('Product subcategory not found');
+    await repo.remove(row);
+    await this.audit.log({
+      actorSub,
+      action: 'DELETE',
+      entityType: 'ProductSubcategory',
+      entityId: id,
+      metadata: { name: row.name },
+      ipAddress: ip ?? null,
+    });
+  }
+
+  // ─── Service categories (booking roots) ───
+  async listServiceCategories(includeInactive: boolean): Promise<ServiceCategory[]> {
+    const repo = AppDataSource.getRepository(ServiceCategory);
+    const qb = repo.createQueryBuilder('c').orderBy('c.sortOrder', 'ASC').addOrderBy('c.name', 'ASC');
+    if (!includeInactive) qb.andWhere('c.isActive = :a', { a: true });
+    return qb.getMany();
+  }
+
+  async getServiceCategory(id: string): Promise<ServiceCategory | null> {
+    return AppDataSource.getRepository(ServiceCategory).findOne({ where: { id } });
+  }
+
+  async createServiceCategory(dto: CreateCategoryDto, actorSub: string, ip: string | undefined): Promise<ServiceCategory> {
+    const repo = AppDataSource.getRepository(ServiceCategory);
+    const row = repo.create({
+      name: dto.name,
+      availability: dto.availability ?? false,
+      emergency: dto.emergency ?? false,
+      trending: dto.trending ?? false,
+      description: dto.description ?? null,
+      slug: dto.slug ?? null,
+      thumbnailUrl: dto.thumbnailUrl ?? null,
+      bannerUrls: dto.bannerUrls ?? null,
+      iconUrl: dto.iconUrl ?? null,
+      sortOrder: dto.sortOrder ?? 0,
+      isActive: dto.isActive ?? true,
+      metadata: dto.metadata ?? null,
+    });
+    await repo.save(row);
+    await this.audit.log({
+      actorSub,
+      action: 'CREATE',
+      entityType: 'ServiceCategory',
+      entityId: row.id,
+      metadata: { name: row.name },
+      ipAddress: ip ?? null,
+    });
+    return row;
+  }
+
+  async updateServiceCategory(id: string, dto: UpdateCategoryDto, actorSub: string, ip: string | undefined): Promise<ServiceCategory> {
+    const repo = AppDataSource.getRepository(ServiceCategory);
+    const row = await repo.findOne({ where: { id } });
+    if (!row) throw new Error('Service category not found');
+    if (dto.name !== undefined) row.name = dto.name;
+    if (dto.availability !== undefined) row.availability = dto.availability;
+    if (dto.emergency !== undefined) row.emergency = dto.emergency;
+    if (dto.trending !== undefined) row.trending = dto.trending;
+    if (dto.description !== undefined) row.description = dto.description;
+    if (dto.slug !== undefined) row.slug = dto.slug;
+    if (dto.thumbnailUrl !== undefined) row.thumbnailUrl = dto.thumbnailUrl;
+    if (dto.bannerUrls !== undefined) row.bannerUrls = dto.bannerUrls;
+    if (dto.iconUrl !== undefined) row.iconUrl = dto.iconUrl;
+    if (dto.sortOrder !== undefined) row.sortOrder = dto.sortOrder;
+    if (dto.isActive !== undefined) row.isActive = dto.isActive;
+    if (dto.metadata !== undefined) row.metadata = dto.metadata;
+    await repo.save(row);
+    await this.audit.log({
+      actorSub,
+      action: 'UPDATE',
+      entityType: 'ServiceCategory',
+      entityId: row.id,
+      metadata: { changes: dto },
+      ipAddress: ip ?? null,
+    });
+    return row;
+  }
+
+  async deleteServiceCategory(id: string, actorSub: string, ip: string | undefined): Promise<void> {
+    const repo = AppDataSource.getRepository(ServiceCategory);
+    const row = await repo.findOne({ where: { id } });
+    if (!row) throw new Error('Service category not found');
+    await repo.remove(row);
+    await this.audit.log({
+      actorSub,
+      action: 'DELETE',
+      entityType: 'ServiceCategory',
+      entityId: id,
+      metadata: { name: row.name },
+      ipAddress: ip ?? null,
+    });
+  }
+
+  async getService(id: string): Promise<Record<string, unknown> | null> {
+    const row = await AppDataSource.getRepository(CatalogServiceItem).findOne({ where: { id } });
+    return row ? this.enrichServiceRow(row) : null;
+  }
+
+  async listServices(includeInactive: boolean): Promise<Record<string, unknown>[]> {
+    const repo = AppDataSource.getRepository(CatalogServiceItem);
+    const qb = repo.createQueryBuilder('s').orderBy('s.sortOrder', 'ASC').addOrderBy('s.name', 'ASC');
+    if (!includeInactive) qb.andWhere('s.isActive = :a', { a: true });
+    const rows = await qb.getMany();
+    return rows.map((r) => this.enrichServiceRow(r));
+  }
+
+  async createService(dto: CreateCatalogServiceDto, actorSub: string, ip: string | undefined): Promise<Record<string, unknown>> {
     if (dto.categoryId) {
-      const c = await this.getCategory(dto.categoryId);
-      if (!c) throw new Error('Category not found');
+      const c = await this.getServiceCategory(dto.categoryId);
+      if (!c) throw new Error('Service category not found');
+    }
+    const meta: Record<string, unknown> = {
+      ...(dto.metadata && typeof dto.metadata === 'object' ? dto.metadata : {}),
+      emergency: dto.emergency ?? false,
+    };
+    if (dto.priceType) meta.priceType = dto.priceType;
+    if (dto.duration != null && String(dto.duration).trim() !== '') {
+      meta.duration = String(dto.duration).trim();
     }
     const repo = AppDataSource.getRepository(CatalogServiceItem);
     const row = repo.create({
-      categoryId: dto.categoryId ?? null,
+      serviceCategoryId: dto.categoryId ?? null,
       name: dto.name,
       availability: dto.availability ?? false,
       trending: dto.trending ?? false,
       iconUrl: dto.iconUrl ?? null,
       description: dto.description ?? null,
+      basePrice:
+        dto.basePrice != null && String(dto.basePrice).trim() !== ''
+          ? String(dto.basePrice)
+          : null,
       sortOrder: dto.sortOrder ?? 0,
       isActive: dto.isActive ?? true,
-      metadata: dto.metadata ?? null,
+      metadata: Object.keys(meta).length ? meta : { emergency: false },
     });
     await repo.save(row);
     await this.audit.log({
@@ -158,28 +344,54 @@ export class CatalogAdminService {
       metadata: { name: row.name },
       ipAddress: ip ?? null,
     });
-    return row;
+    return this.enrichServiceRow(row);
   }
 
-  async updateService(id: string, dto: UpdateCatalogServiceDto, actorSub: string, ip: string | undefined): Promise<CatalogServiceItem> {
+  async updateService(id: string, dto: UpdateCatalogServiceDto, actorSub: string, ip: string | undefined): Promise<Record<string, unknown>> {
     const repo = AppDataSource.getRepository(CatalogServiceItem);
     const row = await repo.findOne({ where: { id } });
     if (!row) throw new Error('Service not found');
     if (dto.categoryId !== undefined) {
       if (dto.categoryId) {
-        const c = await this.getCategory(dto.categoryId);
-        if (!c) throw new Error('Category not found');
+        const c = await this.getServiceCategory(dto.categoryId);
+        if (!c) throw new Error('Service category not found');
       }
-      row.categoryId = dto.categoryId;
+      row.serviceCategoryId = dto.categoryId;
     }
     if (dto.name !== undefined) row.name = dto.name;
     if (dto.availability !== undefined) row.availability = dto.availability;
     if (dto.trending !== undefined) row.trending = dto.trending;
     if (dto.iconUrl !== undefined) row.iconUrl = dto.iconUrl;
     if (dto.description !== undefined) row.description = dto.description;
+    if (dto.basePrice !== undefined) {
+      row.basePrice =
+        dto.basePrice != null && String(dto.basePrice).trim() !== ''
+          ? String(dto.basePrice)
+          : null;
+    }
     if (dto.sortOrder !== undefined) row.sortOrder = dto.sortOrder;
     if (dto.isActive !== undefined) row.isActive = dto.isActive;
-    if (dto.metadata !== undefined) row.metadata = dto.metadata;
+
+    const meta = { ...(row.metadata && typeof row.metadata === 'object' ? row.metadata : {}) } as Record<string, unknown>;
+    if (dto.emergency !== undefined) meta.emergency = dto.emergency;
+    if (dto.priceType !== undefined) {
+      if (dto.priceType) meta.priceType = dto.priceType;
+      else delete meta.priceType;
+    }
+    if (dto.duration !== undefined) {
+      if (dto.duration != null && String(dto.duration).trim() !== '') {
+        meta.duration = String(dto.duration).trim();
+      } else {
+        delete meta.duration;
+      }
+    }
+    if (dto.metadata !== undefined) {
+      if (dto.metadata && typeof dto.metadata === 'object') {
+        Object.assign(meta, dto.metadata);
+      }
+    }
+    row.metadata = Object.keys(meta).length ? meta : null;
+
     await repo.save(row);
     await this.audit.log({
       actorSub,
@@ -189,7 +401,7 @@ export class CatalogAdminService {
       metadata: { changes: dto },
       ipAddress: ip ?? null,
     });
-    return row;
+    return this.enrichServiceRow(row);
   }
 
   async deleteService(id: string, actorSub: string, ip: string | undefined): Promise<void> {
@@ -208,10 +420,10 @@ export class CatalogAdminService {
   }
 
   async batchUnlinkServicesForCategory(categoryId: string, actorSub: string, ip: string | undefined): Promise<{ categoryId: string; updated: number }> {
-    const cat = await this.getCategory(categoryId);
-    if (!cat) throw new Error('Category not found');
+    const cat = await this.getServiceCategory(categoryId);
+    if (!cat) throw new Error('Service category not found');
     const repo = AppDataSource.getRepository(CatalogServiceItem);
-    const result = await repo.update({ categoryId }, { categoryId: null });
+    const result = await repo.update({ serviceCategoryId: categoryId }, { serviceCategoryId: null });
     const updated = result.affected ?? 0;
     await this.audit.log({
       actorSub,
@@ -226,5 +438,99 @@ export class CatalogAdminService {
 
   batchProductsByCategoryStub(categoryId: string): { categoryId: string; updated: number; note: string } {
     return { categoryId, updated: 0, note: 'Deferred: integrate product catalog service.' };
+  }
+
+  async listVendorServiceLinks(params: { vendorId?: string; serviceId?: string }): Promise<CatalogVendorServiceLink[]> {
+    const repo = AppDataSource.getRepository(CatalogVendorServiceLink);
+    if (params.vendorId) {
+      return repo.find({ where: { vendorId: params.vendorId }, order: { updatedAt: 'DESC' } });
+    }
+    if (params.serviceId) {
+      return repo.find({ where: { serviceId: params.serviceId }, order: { price: 'ASC' } });
+    }
+    throw new Error('vendorId or serviceId query parameter is required');
+  }
+
+  async upsertVendorServiceLink(
+    dto: CreateVendorServiceDto,
+    actorSub: string,
+    ip: string | undefined,
+  ): Promise<CatalogVendorServiceLink> {
+    const vRepo = AppDataSource.getRepository(Vendor);
+    const sRepo = AppDataSource.getRepository(CatalogServiceItem);
+    const vsRepo = AppDataSource.getRepository(CatalogVendorServiceLink);
+
+    const vendor = await vRepo.findOne({ where: { id: dto.vendorId } });
+    if (!vendor) throw new Error('Vendor not found');
+    const service = await sRepo.findOne({ where: { id: dto.serviceId } });
+    if (!service) throw new Error('Service not found');
+
+    let row = await vsRepo.findOne({ where: { vendorId: dto.vendorId, serviceId: dto.serviceId } });
+    const isNew = !row;
+    if (!row) {
+      row = vsRepo.create({
+        vendorId: dto.vendorId,
+        serviceId: dto.serviceId,
+        price: String(dto.price),
+        isAvailable: dto.isAvailable ?? true,
+        isActive: dto.isActive ?? true,
+        metadata: dto.metadata ?? null,
+      });
+    } else {
+      row.price = String(dto.price);
+      if (dto.isAvailable !== undefined) row.isAvailable = dto.isAvailable;
+      if (dto.isActive !== undefined) row.isActive = dto.isActive;
+      if (dto.metadata !== undefined) row.metadata = dto.metadata;
+    }
+    await vsRepo.save(row);
+    await this.audit.log({
+      actorSub,
+      action: isNew ? 'CREATE' : 'UPDATE',
+      entityType: 'CatalogVendorService',
+      entityId: row.id,
+      metadata: { vendorId: dto.vendorId, serviceId: dto.serviceId, price: dto.price },
+      ipAddress: ip ?? null,
+    });
+    return row;
+  }
+
+  async updateVendorServiceLink(
+    id: string,
+    dto: UpdateVendorServiceDto,
+    actorSub: string,
+    ip: string | undefined,
+  ): Promise<CatalogVendorServiceLink> {
+    const repo = AppDataSource.getRepository(CatalogVendorServiceLink);
+    const row = await repo.findOne({ where: { id } });
+    if (!row) throw new Error('Vendor service offer not found');
+    if (dto.price !== undefined) row.price = String(dto.price);
+    if (dto.isAvailable !== undefined) row.isAvailable = dto.isAvailable;
+    if (dto.isActive !== undefined) row.isActive = dto.isActive;
+    if (dto.metadata !== undefined) row.metadata = dto.metadata;
+    await repo.save(row);
+    await this.audit.log({
+      actorSub,
+      action: 'UPDATE',
+      entityType: 'CatalogVendorService',
+      entityId: id,
+      metadata: { changes: dto },
+      ipAddress: ip ?? null,
+    });
+    return row;
+  }
+
+  async deleteVendorServiceLink(id: string, actorSub: string, ip: string | undefined): Promise<void> {
+    const repo = AppDataSource.getRepository(CatalogVendorServiceLink);
+    const row = await repo.findOne({ where: { id } });
+    if (!row) throw new Error('Vendor service offer not found');
+    await repo.remove(row);
+    await this.audit.log({
+      actorSub,
+      action: 'DELETE',
+      entityType: 'CatalogVendorService',
+      entityId: id,
+      metadata: { vendorId: row.vendorId, serviceId: row.serviceId },
+      ipAddress: ip ?? null,
+    });
   }
 }

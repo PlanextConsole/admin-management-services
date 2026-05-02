@@ -9,6 +9,11 @@ import { CreateVendorDto } from './dto/create-vendor.dto';
 import { UpdateVendorDto } from './dto/update-vendor.dto';
 import { UpdateVendorEnquiryDto } from './dto/update-vendor-enquiry.dto';
 import { ApproveVendorRequestDto } from './dto/approve-vendor-request.dto';
+import {
+  normalizeVendorWriteBody,
+  parseVendorKindFilter,
+  serializeVendorRow,
+} from './vendor.http.helpers';
 
 /**
  * Canonical REST paths (preferred for new clients):
@@ -27,10 +32,16 @@ export function createVendorAdminRoutes(): Router {
 
   const listVendors = async (req: Request, res: Response) => {
     try {
-      const { limit, offset } = parseLimitOffset(req, { limit: 20, maxLimit: 100 });
+      const { limit, offset } = parseLimitOffset(req, { limit: 100, maxLimit: 500 });
       const status = req.query.status ? String(req.query.status) : undefined;
-      const { items, total } = await svc.listVendors(limit, offset, status);
-      res.json({ items, total, limit, offset });
+      const vendorKind = parseVendorKindFilter(req);
+      const { items, total } = await svc.listVendors(limit, offset, { status, vendorKind });
+      res.json({
+        items: items.map(v => serializeVendorRow(v)),
+        total,
+        limit,
+        offset,
+      });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -40,7 +51,7 @@ export function createVendorAdminRoutes(): Router {
     try {
       const row = await svc.getVendor(req.params.id);
       if (!row) return res.status(404).json({ message: 'Vendor not found' });
-      res.json(row);
+      res.json(serializeVendorRow(row));
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -48,14 +59,14 @@ export function createVendorAdminRoutes(): Router {
 
   const createVendor = async (req: Request, res: Response) => {
     try {
-      const dto = plainToClass(CreateVendorDto, req.body);
+      const dto = plainToClass(CreateVendorDto, normalizeVendorWriteBody((req.body || {}) as Record<string, unknown>));
       const errors = await validate(dto);
       if (errors.length > 0) {
         const msgs = errors.map(e => Object.values(e.constraints || {})).flat();
         return res.status(400).json({ message: msgs.join(', ') });
       }
       const row = await svc.createVendor(dto, getAuthSub(req), clientIp(req));
-      res.status(201).json(row);
+      res.status(201).json(serializeVendorRow(row));
     } catch (e: any) {
       res.status(400).json({ message: e.message });
     }
@@ -63,14 +74,14 @@ export function createVendorAdminRoutes(): Router {
 
   const patchVendor = async (req: Request, res: Response) => {
     try {
-      const dto = plainToClass(UpdateVendorDto, req.body);
+      const dto = plainToClass(UpdateVendorDto, normalizeVendorWriteBody((req.body || {}) as Record<string, unknown>));
       const errors = await validate(dto);
       if (errors.length > 0) {
         const msgs = errors.map(e => Object.values(e.constraints || {})).flat();
         return res.status(400).json({ message: msgs.join(', ') });
       }
       const row = await svc.updateVendor(req.params.id, dto, getAuthSub(req), clientIp(req));
-      res.json(row);
+      res.json(serializeVendorRow(row));
     } catch (e: any) {
       const status = e.message === 'Vendor not found' ? 404 : 400;
       res.status(status).json({ message: e.message });

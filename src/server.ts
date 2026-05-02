@@ -1,14 +1,21 @@
+import 'dotenv/config';
 import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import path from 'path';
-import * as dotenv from 'dotenv';
 import { AppDataSource } from './config/database';
+import {
+  repairCatalogVendorsSchema,
+  repairCustomerProfilesSchema,
+  repairBulkUploadJobsSchema,
+  repairMediaLibrarySchema,
+  repairOccupationAdminCreatePlatformVariableSeed,
+  repairPushNotificationSendsSchema,
+  repairVendorPlansSchema,
+} from './config/schemaRepair';
 import { createAdminRoutes } from './modules/admin-core/admin-core.routes';
 import { createUploadRoutes } from './modules/upload/upload.routes';
 import { registerErrorHandlers } from './middleware/errorHandlers';
 import { DiscoveryRegistration } from './service/discoveryRegistration';
-
-dotenv.config();
 
 const app: Express = express();
 const PORT = parseInt(process.env.SERVER_PORT || '8082', 10);
@@ -27,6 +34,13 @@ app.use('/uploads', express.static(path.resolve(__dirname, '../uploads')));
 
 async function startServer() {
   try {
+    await repairCustomerProfilesSchema();
+    await repairCatalogVendorsSchema();
+    await repairVendorPlansSchema();
+    await repairPushNotificationSendsSchema();
+    await repairMediaLibrarySchema();
+    await repairBulkUploadJobsSchema();
+    await repairOccupationAdminCreatePlatformVariableSeed();
     await AppDataSource.initialize();
     console.log('Admin DB connected');
 

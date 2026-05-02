@@ -1,5 +1,7 @@
+import { Brackets } from 'typeorm';
 import { AppDataSource } from '../../config/database';
 import { AuditService } from '../admin-core/services/audit.service';
+import { Customer } from '../customers/entities/Customer';
 import { Order } from './entities/Order';
 import { Settlement } from './entities/Settlement';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -23,6 +25,39 @@ export class OrdersAdminService {
   async listOrdersByVendor(vendorId: string, limit: number, offset: number): Promise<{ items: Order[]; total: number }> {
     const repo = AppDataSource.getRepository(Order);
     const [items, total] = await repo.findAndCount({ where: { vendorId }, order: { createdAt: 'DESC' }, take: limit, skip: offset });
+    return { items, total };
+  }
+
+  /**
+   * Orders may store `customer_id` as Keycloak `sub`, explicit JWT `customer_id`, or profile UUID.
+   * Cart checkout also writes `metadata.customerProfileId`. Admin passes `customer_profiles.id`.
+   */
+  async listOrdersByCustomer(customerId: string, limit: number, offset: number): Promise<{ items: Order[]; total: number }> {
+    const idSet = new Set<string>();
+    idSet.add(customerId);
+    const customer = await AppDataSource.getRepository(Customer).findOne({
+      where: [{ id: customerId }, { keycloakUserId: customerId }],
+    });
+    if (customer?.id) idSet.add(customer.id);
+    if (customer?.keycloakUserId) idSet.add(customer.keycloakUserId);
+    const ids = [...idSet].filter((x) => Boolean(x && String(x).trim()));
+
+    const repo = AppDataSource.getRepository(Order);
+    const qb = repo
+      .createQueryBuilder('o')
+      .where(
+        new Brackets((w) => {
+          w.where('o.customerId IN (:...ids)', { ids }).orWhere(
+            "JSON_UNQUOTE(JSON_EXTRACT(o.metadata, '$.customerProfileId')) IN (:...ids)",
+            { ids },
+          );
+        }),
+      )
+      .orderBy('o.createdAt', 'DESC')
+      .take(limit)
+      .skip(offset);
+
+    const [items, total] = await qb.getManyAndCount();
     return { items, total };
   }
 

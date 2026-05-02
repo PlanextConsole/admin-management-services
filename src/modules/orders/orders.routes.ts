@@ -71,6 +71,12 @@ export function createOrdersAdminRoutes(): Router {
     res.json({ items, total, vendorId: req.params.vendorId, limit, offset });
   });
 
+  r.get('/orders/customer/:customerId', async (req: Request, res: Response) => {
+    const { limit, offset } = parseLimitOffset(req, { limit: 20, maxLimit: 100 });
+    const { items, total } = await svc.listOrdersByCustomer(req.params.customerId, limit, offset);
+    res.json({ items, total, customerId: req.params.customerId, limit, offset });
+  });
+
   const listSettlements = (kind: 'all' | 'cash' | 'points') => async (req: Request, res: Response) => {
     const { limit, offset } = parseLimitOffset(req, { limit: 20, maxLimit: 100 });
     const { items, total } = await svc.listSettlements(kind, limit, offset);

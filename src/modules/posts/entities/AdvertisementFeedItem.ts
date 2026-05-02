@@ -21,6 +21,9 @@ export class AdvertisementFeedItem {
   @Column({ name: 'sort_order', type: 'int', default: 0 })
   sortOrder!: number;
 
+  @Column({ type: 'json', nullable: true })
+  metadata!: Record<string, unknown> | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

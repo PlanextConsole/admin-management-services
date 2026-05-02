@@ -1,4 +1,14 @@
-import { IsBoolean, IsEmail, IsNumber, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsEmail,
+  IsIn,
+  IsNotEmpty,
+  IsNumber,
+  IsObject,
+  IsOptional,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 import type { VendorKycStatus, VendorStatus } from '../entities/Vendor';
 
@@ -120,4 +130,9 @@ export class CreateVendorDto {
   @IsString()
   @MaxLength(128)
   keycloakUserId?: string | null;
+
+  /** Required. Also accepts vendorType / vendor_type PRODUCT|SERVICE (normalized in route). */
+  @IsNotEmpty({ message: 'Vendor type is required' })
+  @IsIn(['product', 'service'], { message: 'Vendor type must be product or service' })
+  vendorKind!: 'product' | 'service';
 }

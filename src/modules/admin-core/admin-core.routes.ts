@@ -17,6 +17,10 @@ import { createVendorReviewsAdminRoutes } from '../vendor-reviews/vendor-reviews
 import { createClassifiedAdminRoutes } from '../classified/classified.routes';
 import { createPosAdminRoutes } from '../pos/pos.routes';
 import { createAnalyticsAdminRoutes } from '../analytics/analytics.routes';
+import { createVendorPlansAdminRoutes } from '../vendor-plans/vendor-plans.routes';
+import { createPushNotificationsAdminRoutes } from '../push-notifications/push-notifications.routes';
+import { createMediaLibraryAdminRoutes } from '../media-library/media-library.routes';
+import { createFileUploadsAdminRoutes } from '../file-uploads/file-uploads.routes';
 import { HierarchyService } from './services/hierarchy.service';
 import { LayoutService } from './services/layout.service';
 import { AuditService } from './services/audit.service';
@@ -66,6 +70,10 @@ export const createAdminRoutes = (): Router => {
   router.use(createClassifiedAdminRoutes());
   router.use(createPosAdminRoutes());
   router.use(createAnalyticsAdminRoutes());
+  router.use(createVendorPlansAdminRoutes());
+  router.use(createPushNotificationsAdminRoutes());
+  router.use(createMediaLibraryAdminRoutes());
+  router.use(createFileUploadsAdminRoutes());
 
   const secured = Router();
   secured.use(jwtAuth);

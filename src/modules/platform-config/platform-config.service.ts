@@ -1,6 +1,7 @@
 import { AppDataSource } from '../../config/database';
 import { AuditService } from '../admin-core/services/audit.service';
 import { PlatformVariable } from './entities/PlatformVariable';
+import { OCCUPATION_ADMIN_CREATE_ENABLED_KEY, isPlatformVariableRowAllowingAction } from './platform-variable-value';
 import { WebsiteQuery } from './entities/WebsiteQuery';
 import { CreatePlatformVariableDto } from './dto/create-platform-variable.dto';
 import { UpdatePlatformVariableDto } from './dto/update-platform-variable.dto';
@@ -13,6 +14,22 @@ export class PlatformConfigAdminService {
     const repo = AppDataSource.getRepository(PlatformVariable);
     const [items, total] = await repo.findAndCount({ order: { createdAt: 'DESC' }, take: limit, skip: offset });
     return { items, total };
+  }
+
+  async getPlatformVariableByKey(key: string): Promise<PlatformVariable | null> {
+    const repo = AppDataSource.getRepository(PlatformVariable);
+    const lk = key.trim().toLowerCase();
+    if (!lk) return null;
+    return repo
+      .createQueryBuilder('p')
+      .where('LOWER(TRIM(p.key)) = :lk', { lk })
+      .getOne();
+  }
+
+  /** Whether POST /occupations is allowed (reads `OCCUPATION_ADMIN_CREATE_ENABLED`). */
+  async isOccupationAdminCreateEnabled(): Promise<boolean> {
+    const row = await this.getPlatformVariableByKey(OCCUPATION_ADMIN_CREATE_ENABLED_KEY);
+    return isPlatformVariableRowAllowingAction(row, true);
   }
 
   async createPlatformVariable(dto: CreatePlatformVariableDto, actorSub: string, ip: string | undefined): Promise<PlatformVariable> {

@@ -8,8 +8,11 @@ import { VendorEnquiry } from '../modules/vendors/entities/VendorEnquiry';
 import { Customer } from '../modules/customers/entities/Customer';
 import { Coupon } from '../modules/customers/entities/Coupon';
 import { Occupation } from '../modules/customers/entities/Occupation';
-import { CatalogCategory } from '../modules/catalog/entities/CatalogCategory';
+import { ProductCategory } from '../modules/catalog/entities/ProductCategory';
+import { ProductSubcategory } from '../modules/catalog/entities/ProductSubcategory';
+import { ServiceCategory } from '../modules/catalog/entities/ServiceCategory';
 import { CatalogServiceItem } from '../modules/catalog/entities/CatalogServiceItem';
+import { VendorService } from '../modules/catalog/entities/VendorService';
 import { Product } from '../modules/products/entities/Product';
 import { ProductRequest } from '../modules/products/entities/ProductRequest';
 import { TaxConfiguration } from '../modules/products/entities/TaxConfiguration';
@@ -33,6 +36,11 @@ import { ClassifiedProduct } from '../modules/classified/entities/ClassifiedProd
 import { PosVendor } from '../modules/pos/entities/PosVendor';
 import { PosProduct } from '../modules/pos/entities/PosProduct';
 import { PosCategory } from '../modules/pos/entities/PosCategory';
+import { VendorPlan } from '../modules/vendor-plans/entities/VendorPlan';
+import { AdminPushNotificationSend } from '../modules/push-notifications/entities/AdminPushNotificationSend';
+import { MediaLibraryFolder } from '../modules/media-library/entities/MediaLibraryFolder';
+import { MediaLibraryAsset } from '../modules/media-library/entities/MediaLibraryAsset';
+import { AdminBulkUploadJob } from '../modules/file-uploads/entities/AdminBulkUploadJob';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -51,8 +59,11 @@ export const AppDataSource = new DataSource({
     Customer,
     Coupon,
     Occupation,
-    CatalogCategory,
+    ProductCategory,
+    ProductSubcategory,
+    ServiceCategory,
     CatalogServiceItem,
+    VendorService,
     Product,
     ProductRequest,
     TaxConfiguration,
@@ -76,7 +87,13 @@ export const AppDataSource = new DataSource({
     PosVendor,
     PosProduct,
     PosCategory,
+    VendorPlan,
+    AdminPushNotificationSend,
+    MediaLibraryFolder,
+    MediaLibraryAsset,
+    AdminBulkUploadJob,
   ],
-  synchronize: process.env.NODE_ENV !== 'production',
+  // Prevent accidental DDL races across services; enable only when explicitly requested.
+  synchronize: process.env.DB_SYNCHRONIZE === 'true',
   logging: process.env.NODE_ENV === 'development',
 });

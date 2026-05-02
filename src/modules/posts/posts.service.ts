@@ -38,6 +38,7 @@ export class PostsAdminService {
       redirectUrl: dto.redirectUrl ?? null,
       status: dto.status ?? 'active',
       sortOrder: dto.sortOrder ?? 0,
+      metadata: dto.metadata ?? null,
     });
     await repo.save(row);
     await this.audit.log({ actorSub, action: 'CREATE', entityType: 'AdvertisementFeedItem', entityId: row.id, metadata: { title: row.title }, ipAddress: ip ?? null });
@@ -53,6 +54,7 @@ export class PostsAdminService {
     if (dto.redirectUrl !== undefined) row.redirectUrl = dto.redirectUrl;
     if (dto.status !== undefined) row.status = dto.status;
     if (dto.sortOrder !== undefined) row.sortOrder = dto.sortOrder;
+    if (dto.metadata !== undefined) row.metadata = dto.metadata;
     await repo.save(row);
     await this.audit.log({ actorSub, action: 'UPDATE', entityType: 'AdvertisementFeedItem', entityId: row.id, metadata: { changes: dto }, ipAddress: ip ?? null });
     return row;

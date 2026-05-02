@@ -1,7 +1,8 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
-@Entity('catalog_categories')
-export class CatalogCategory {
+/** Top-level product taxonomy (shop / catalog). */
+@Entity('product_categories')
+export class ProductCategory {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
@@ -12,10 +13,6 @@ export class CatalogCategory {
   @Column({ type: 'varchar', length: 128, nullable: true })
   @Index()
   slug!: string | null;
-
-  @Column({ name: 'parent_id', type: 'varchar', length: 36, nullable: true })
-  @Index()
-  parentId!: string | null;
 
   @Column({ type: 'boolean', default: false })
   availability!: boolean;

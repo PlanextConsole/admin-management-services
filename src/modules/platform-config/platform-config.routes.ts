@@ -21,6 +21,17 @@ export function createPlatformConfigAdminRoutes(): Router {
     res.json({ items, total, limit, offset });
   });
 
+  r.get('/platformVariables/by-key/:key', async (req: Request, res: Response) => {
+    try {
+      const raw = req.params.key ?? '';
+      const key = decodeURIComponent(raw);
+      const row = await svc.getPlatformVariableByKey(key);
+      res.json({ item: row });
+    } catch (e: any) {
+      res.status(400).json({ message: e.message });
+    }
+  });
+
   r.post('/platformVariables', async (req: Request, res: Response) => {
     try {
       const dto = plainToClass(CreatePlatformVariableDto, req.body);

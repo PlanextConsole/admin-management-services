@@ -1,4 +1,4 @@
-import { IsBoolean, IsEmail, IsNumber, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsNumber, IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 import type { VendorKycStatus, VendorStatus } from '../entities/Vendor';
 
@@ -120,4 +120,8 @@ export class UpdateVendorDto {
   @IsString()
   @MaxLength(128)
   keycloakUserId?: string | null;
+
+  @IsOptional()
+  @IsIn(['product', 'service'])
+  vendorKind?: 'product' | 'service';
 }

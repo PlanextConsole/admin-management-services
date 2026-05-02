@@ -1,6 +1,6 @@
 import { AppDataSource } from '../../config/database';
 import { AuditService } from '../admin-core/services/audit.service';
-import { Vendor } from './entities/Vendor';
+import { Vendor, type VendorKind } from './entities/Vendor';
 import { VendorRequest } from './entities/VendorRequest';
 import { VendorEnquiry } from './entities/VendorEnquiry';
 import { CreateVendorDto } from './dto/create-vendor.dto';
@@ -11,10 +11,15 @@ import { ApproveVendorRequestDto } from './dto/approve-vendor-request.dto';
 export class VendorAdminService {
   private audit = new AuditService();
 
-  async listVendors(limit: number, offset: number, status?: string): Promise<{ items: Vendor[]; total: number }> {
+  async listVendors(
+    limit: number,
+    offset: number,
+    opts?: { status?: string; vendorKind?: VendorKind }
+  ): Promise<{ items: Vendor[]; total: number }> {
     const repo = AppDataSource.getRepository(Vendor);
     const where: Record<string, unknown> = {};
-    if (status) where.status = status;
+    if (opts?.status) where.status = opts.status;
+    if (opts?.vendorKind) where.vendorKind = opts.vendorKind;
     const [items, total] = await repo.findAndCount({
       where,
       order: { createdAt: 'DESC' },
@@ -61,6 +66,8 @@ export class VendorAdminService {
       bankJson: dto.bankJson ?? null,
       notes: dto.notes ?? null,
       keycloakUserId: dto.keycloakUserId ?? null,
+      vendorKind: dto.vendorKind,
+      vendorType: dto.vendorKind === 'service' ? 'SERVICE' : 'PRODUCT',
     });
     await repo.save(row);
     await this.audit.log({
@@ -111,6 +118,10 @@ export class VendorAdminService {
     if (dto.bankJson !== undefined) row.bankJson = dto.bankJson;
     if (dto.notes !== undefined) row.notes = dto.notes;
     if (dto.keycloakUserId !== undefined) row.keycloakUserId = dto.keycloakUserId;
+    if (dto.vendorKind !== undefined) {
+      row.vendorKind = dto.vendorKind;
+      row.vendorType = dto.vendorKind === 'service' ? 'SERVICE' : 'PRODUCT';
+    }
     await repo.save(row);
     await this.audit.log({
       actorSub,
@@ -193,6 +204,15 @@ export class VendorAdminService {
       const phoneRaw = dto.phone ?? payload.phone;
       const keycloakRaw = dto.keycloakUserId ?? payload.keycloakUserId ?? payload.keycloak_user_id;
 
+      const vt = String(payload.vendorType ?? payload.vendor_type ?? '').trim().toUpperCase();
+      const kindRaw =
+        vt === 'SERVICE'
+          ? 'service'
+          : vt === 'PRODUCT'
+            ? 'product'
+            : String(payload.vendorKind ?? payload.vendor_kind ?? 'product').toLowerCase();
+      const approvedKind = kindRaw === 'service' ? 'service' : 'product';
+
       const vendor = vendorRepo.create({
         businessName,
         ownerName,
@@ -204,6 +224,8 @@ export class VendorAdminService {
         addressJson: (payload.addressJson as Record<string, unknown> | null) ?? (payload.address as Record<string, unknown> | null) ?? null,
         notes: dto.notes != null ? String(dto.notes) : null,
         keycloakUserId: keycloakRaw != null && String(keycloakRaw).trim() !== '' ? String(keycloakRaw).trim() : null,
+        vendorKind: approvedKind,
+        vendorType: approvedKind === 'service' ? 'SERVICE' : 'PRODUCT',
       });
       await vendorRepo.save(vendor);
 

@@ -8,6 +8,8 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CreateCatalogServiceDto } from './dto/create-catalog-service.dto';
 import { UpdateCatalogServiceDto } from './dto/update-catalog-service.dto';
+import { CreateVendorServiceDto } from './dto/create-vendor-service.dto';
+import { UpdateVendorServiceDto } from './dto/update-vendor-service.dto';
 
 export function createCatalogAdminRoutes(): Router {
   const r = Router();
@@ -16,39 +18,41 @@ export function createCatalogAdminRoutes(): Router {
   r.use(requireRole('ADMIN'));
   r.use(requirePermission('catalog.admin.manage'));
 
-  const listCategories = async (req: Request, res: Response) => {
+  const listFlag = (req: Request) => req.query.purpose === 'all' || req.query.includeInactive === 'true';
+
+  // ─── Product categories (shop roots) ───
+  const listProductCategories = async (req: Request, res: Response) => {
     try {
-      const all = req.query.purpose === 'all' || req.query.includeInactive === 'true';
-      const items = await svc.listCategories(all);
+      const items = await svc.listProductCategories(listFlag(req));
       res.json({ items });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
   };
-  r.get('/categories/all', listCategories);
-  r.get('/categories', listCategories);
+  r.get('/product-categories/all', listProductCategories);
+  r.get('/product-categories', listProductCategories);
 
-  r.get('/categories/:id', async (req: Request, res: Response) => {
+  r.get('/product-categories/:id', async (req: Request, res: Response) => {
     try {
-      const row = await svc.getCategory(req.params.id);
-      if (!row) return res.status(404).json({ message: 'Category not found' });
+      const row = await svc.getProductCategory(req.params.id);
+      if (!row) return res.status(404).json({ message: 'Product category not found' });
       res.json(row);
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
   });
 
-  r.delete('/categories/:id', async (req: Request, res: Response) => {
+  r.delete('/product-categories/:id', async (req: Request, res: Response) => {
     try {
-      await svc.deleteCategory(req.params.id, getAuthSub(req), clientIp(req));
+      await svc.deleteProductCategory(req.params.id, getAuthSub(req), clientIp(req));
       res.status(204).send();
     } catch (e: any) {
-      const status = e.message === 'Category not found' ? 404 : 400;
+      const status = e.message === 'Product category not found' ? 404 : 400;
       res.status(status).json({ message: e.message });
     }
   });
 
-  const createCategory = async (req: Request, res: Response) => {
+  const createProductCategory = async (req: Request, res: Response) => {
     try {
       const dto = plainToClass(CreateCategoryDto, req.body);
       const errors = await validate(dto);
@@ -56,16 +60,15 @@ export function createCatalogAdminRoutes(): Router {
         const msgs = errors.map(e => Object.values(e.constraints || {})).flat();
         return res.status(400).json({ message: msgs.join(', ') });
       }
-      const row = await svc.createCategory(dto, getAuthSub(req), clientIp(req));
+      const row = await svc.createProductCategory(dto, getAuthSub(req), clientIp(req));
       res.status(201).json(row);
     } catch (e: any) {
       res.status(400).json({ message: e.message });
     }
   };
-  r.post('/add_categories', createCategory);
-  r.post('/categories', createCategory);
+  r.post('/product-categories', createProductCategory);
 
-  const patchCategory = async (req: Request, res: Response) => {
+  const patchProductCategory = async (req: Request, res: Response) => {
     try {
       const dto = plainToClass(UpdateCategoryDto, req.body);
       const errors = await validate(dto);
@@ -73,15 +76,144 @@ export function createCatalogAdminRoutes(): Router {
         const msgs = errors.map(e => Object.values(e.constraints || {})).flat();
         return res.status(400).json({ message: msgs.join(', ') });
       }
-      const row = await svc.updateCategory(req.params.id, dto, getAuthSub(req), clientIp(req));
+      const row = await svc.updateProductCategory(req.params.id, dto, getAuthSub(req), clientIp(req));
       res.json(row);
     } catch (e: any) {
-      const status = e.message === 'Category not found' ? 404 : 400;
+      const status = e.message === 'Product category not found' ? 404 : 400;
       res.status(status).json({ message: e.message });
     }
   };
-  r.patch('/categories/:id', patchCategory);
-  r.patch('/category/:id', patchCategory);
+  r.patch('/product-categories/:id', patchProductCategory);
+
+  // ─── Product subcategories ───
+  const listProductSubcategories = async (req: Request, res: Response) => {
+    try {
+      const items = await svc.listProductSubcategories(listFlag(req));
+      res.json({ items });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  };
+  r.get('/product-subcategories/all', listProductSubcategories);
+  r.get('/product-subcategories', listProductSubcategories);
+
+  r.get('/product-subcategories/:id', async (req: Request, res: Response) => {
+    try {
+      const row = await svc.getProductSubcategory(req.params.id);
+      if (!row) return res.status(404).json({ message: 'Product subcategory not found' });
+      res.json(row);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  r.delete('/product-subcategories/:id', async (req: Request, res: Response) => {
+    try {
+      await svc.deleteProductSubcategory(req.params.id, getAuthSub(req), clientIp(req));
+      res.status(204).send();
+    } catch (e: any) {
+      const status = e.message === 'Product subcategory not found' ? 404 : 400;
+      res.status(status).json({ message: e.message });
+    }
+  });
+
+  const createProductSubcategory = async (req: Request, res: Response) => {
+    try {
+      const dto = plainToClass(CreateCategoryDto, req.body);
+      const errors = await validate(dto);
+      if (errors.length > 0) {
+        const msgs = errors.map(e => Object.values(e.constraints || {})).flat();
+        return res.status(400).json({ message: msgs.join(', ') });
+      }
+      const row = await svc.createProductSubcategory(dto, getAuthSub(req), clientIp(req));
+      res.status(201).json(row);
+    } catch (e: any) {
+      res.status(400).json({ message: e.message });
+    }
+  };
+  r.post('/product-subcategories', createProductSubcategory);
+
+  const patchProductSubcategory = async (req: Request, res: Response) => {
+    try {
+      const dto = plainToClass(UpdateCategoryDto, req.body);
+      const errors = await validate(dto);
+      if (errors.length > 0) {
+        const msgs = errors.map(e => Object.values(e.constraints || {})).flat();
+        return res.status(400).json({ message: msgs.join(', ') });
+      }
+      const row = await svc.updateProductSubcategory(req.params.id, dto, getAuthSub(req), clientIp(req));
+      res.json(row);
+    } catch (e: any) {
+      const status = e.message === 'Product subcategory not found' ? 404 : 400;
+      res.status(status).json({ message: e.message });
+    }
+  };
+  r.patch('/product-subcategories/:id', patchProductSubcategory);
+
+  // ─── Service categories (booking) ───
+  const listServiceCategories = async (req: Request, res: Response) => {
+    try {
+      const items = await svc.listServiceCategories(listFlag(req));
+      res.json({ items });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  };
+  r.get('/service-categories/all', listServiceCategories);
+  r.get('/service-categories', listServiceCategories);
+
+  r.get('/service-categories/:id', async (req: Request, res: Response) => {
+    try {
+      const row = await svc.getServiceCategory(req.params.id);
+      if (!row) return res.status(404).json({ message: 'Service category not found' });
+      res.json(row);
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
+  r.delete('/service-categories/:id', async (req: Request, res: Response) => {
+    try {
+      await svc.deleteServiceCategory(req.params.id, getAuthSub(req), clientIp(req));
+      res.status(204).send();
+    } catch (e: any) {
+      const status = e.message === 'Service category not found' ? 404 : 400;
+      res.status(status).json({ message: e.message });
+    }
+  });
+
+  const createServiceCategory = async (req: Request, res: Response) => {
+    try {
+      const dto = plainToClass(CreateCategoryDto, req.body);
+      const errors = await validate(dto);
+      if (errors.length > 0) {
+        const msgs = errors.map(e => Object.values(e.constraints || {})).flat();
+        return res.status(400).json({ message: msgs.join(', ') });
+      }
+      const row = await svc.createServiceCategory(dto, getAuthSub(req), clientIp(req));
+      res.status(201).json(row);
+    } catch (e: any) {
+      res.status(400).json({ message: e.message });
+    }
+  };
+  r.post('/service-categories', createServiceCategory);
+
+  const patchServiceCategory = async (req: Request, res: Response) => {
+    try {
+      const dto = plainToClass(UpdateCategoryDto, req.body);
+      const errors = await validate(dto);
+      if (errors.length > 0) {
+        const msgs = errors.map(e => Object.values(e.constraints || {})).flat();
+        return res.status(400).json({ message: msgs.join(', ') });
+      }
+      const row = await svc.updateServiceCategory(req.params.id, dto, getAuthSub(req), clientIp(req));
+      res.json(row);
+    } catch (e: any) {
+      const status = e.message === 'Service category not found' ? 404 : 400;
+      res.status(status).json({ message: e.message });
+    }
+  };
+  r.patch('/service-categories/:id', patchServiceCategory);
 
   const listServices = async (req: Request, res: Response) => {
     try {
@@ -127,7 +259,7 @@ export function createCatalogAdminRoutes(): Router {
       const body = await svc.batchUnlinkServicesForCategory(req.params.categoryId, getAuthSub(req), clientIp(req));
       res.json(body);
     } catch (e: any) {
-      const status = e.message === 'Category not found' ? 404 : 400;
+      const status = e.message === 'Service category not found' ? 404 : 400;
       res.status(status).json({ message: e.message });
     }
   });
@@ -164,6 +296,59 @@ export function createCatalogAdminRoutes(): Router {
 
   r.patch('/products/batchCategory/:categoryId', (req: Request, res: Response) => {
     res.json(svc.batchProductsByCategoryStub(req.params.categoryId));
+  });
+
+  r.get('/vendor-services', async (req: Request, res: Response) => {
+    try {
+      const vendorId = String(req.query.vendorId ?? '').trim() || undefined;
+      const serviceId = String(req.query.serviceId ?? '').trim() || undefined;
+      const items = await svc.listVendorServiceLinks({ vendorId, serviceId });
+      res.json({ items });
+    } catch (e: any) {
+      const status = e.message?.includes('required') ? 400 : 500;
+      res.status(status).json({ message: e.message });
+    }
+  });
+
+  r.post('/vendor-services', async (req: Request, res: Response) => {
+    try {
+      const dto = plainToClass(CreateVendorServiceDto, req.body);
+      const errors = await validate(dto);
+      if (errors.length > 0) {
+        const msgs = errors.map((e) => Object.values(e.constraints || {})).flat();
+        return res.status(400).json({ message: msgs.join(', ') });
+      }
+      const row = await svc.upsertVendorServiceLink(dto, getAuthSub(req), clientIp(req));
+      res.status(201).json(row);
+    } catch (e: any) {
+      res.status(400).json({ message: e.message });
+    }
+  });
+
+  r.patch('/vendor-services/:id', async (req: Request, res: Response) => {
+    try {
+      const dto = plainToClass(UpdateVendorServiceDto, req.body);
+      const errors = await validate(dto);
+      if (errors.length > 0) {
+        const msgs = errors.map((e) => Object.values(e.constraints || {})).flat();
+        return res.status(400).json({ message: msgs.join(', ') });
+      }
+      const row = await svc.updateVendorServiceLink(req.params.id, dto, getAuthSub(req), clientIp(req));
+      res.json(row);
+    } catch (e: any) {
+      const status = e.message === 'Vendor service offer not found' ? 404 : 400;
+      res.status(status).json({ message: e.message });
+    }
+  });
+
+  r.delete('/vendor-services/:id', async (req: Request, res: Response) => {
+    try {
+      await svc.deleteVendorServiceLink(req.params.id, getAuthSub(req), clientIp(req));
+      res.status(204).send();
+    } catch (e: any) {
+      const status = e.message === 'Vendor service offer not found' ? 404 : 400;
+      res.status(status).json({ message: e.message });
+    }
   });
 
   return r;

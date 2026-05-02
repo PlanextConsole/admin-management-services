@@ -88,8 +88,8 @@ export function createCustomerAdminRoutes(): Router {
   const listOccupationsHandler = async (req: Request, res: Response) => {
     try {
       const all = req.query.purpose === 'all' || req.query.includeInactive === 'true';
-      const items = await svc.listOccupationsAll(all);
-      res.json({ items });
+      const { items, totalCustomers } = await svc.listOccupationsWithCustomerCounts(all);
+      res.json({ items, totalCustomers });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
     }
@@ -109,6 +109,12 @@ export function createCustomerAdminRoutes(): Router {
       const row = await svc.createOccupation(dto, getAuthSub(req), clientIp(req));
       res.status(201).json(row);
     } catch (e: any) {
+      if (e.message === 'OCCUPATION_CREATE_DISABLED') {
+        return res.status(403).json({
+          message:
+            'Creating occupations is disabled. Set OCCUPATION_ADMIN_CREATE_ENABLED to 1 under Platform Variables (or re-enable that variable).',
+        });
+      }
       res.status(400).json({ message: e.message });
     }
   };
@@ -167,7 +173,7 @@ export function createCustomerAdminRoutes(): Router {
 
   r.get('/occupations/:id', async (req: Request, res: Response) => {
     try {
-      const row = await svc.getOccupation(req.params.id);
+      const row = await svc.getOccupationWithCustomerCount(req.params.id);
       if (!row) return res.status(404).json({ message: 'Occupation not found' });
       res.json(row);
     } catch (e: any) {

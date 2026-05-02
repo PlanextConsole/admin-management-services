@@ -12,9 +12,10 @@ export class CatalogServiceItem {
   @PrimaryGeneratedColumn('uuid')
   id!: string;
 
-  @Column({ name: 'category_id', type: 'varchar', length: 36, nullable: true })
+  /** FK to {@link ServiceCategory} — services belong only to service categories. */
+  @Column({ name: 'service_category_id', type: 'varchar', length: 36, nullable: true })
   @Index()
-  categoryId!: string | null;
+  serviceCategoryId!: string | null;
 
   @Column({ type: 'varchar', length: 255 })
   @Index()
@@ -31,6 +32,13 @@ export class CatalogServiceItem {
 
   @Column({ type: 'text', nullable: true })
   description!: string | null;
+
+  /**
+   * Optional listing / “from” price in the user Services tab. Final bookable price
+   * comes from `catalog_vendor_services` per vendor.
+   */
+  @Column({ name: 'base_price', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  basePrice!: string | null;
 
   @Column({ name: 'sort_order', type: 'int', default: 0 })
   sortOrder!: number;

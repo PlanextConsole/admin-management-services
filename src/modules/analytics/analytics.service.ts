@@ -21,7 +21,6 @@ export class AnalyticsAdminService {
 
     const [
       totalCustomers,
-      activeCustomers,
       totalVendors,
       activeVendors,
       totalOrders,
@@ -30,7 +29,6 @@ export class AnalyticsAdminService {
       totalProducts,
     ] = await Promise.all([
       customerRepo.count(),
-      customerRepo.count({ where: { status: 'active' } }),
       vendorRepo.count(),
       vendorRepo.count({ where: { status: 'active' } as any }),
       orderRepo.count(),
@@ -38,6 +36,15 @@ export class AnalyticsAdminService {
       settlementRepo.count(),
       productRepo.count(),
     ]);
+
+    // Some legacy DBs may still miss `customer_profiles.status`.
+    // Keep dashboard functional instead of failing the whole request.
+    let activeCustomers = totalCustomers;
+    try {
+      activeCustomers = await customerRepo.count({ where: { status: 'active' } });
+    } catch {
+      activeCustomers = totalCustomers;
+    }
 
     return {
       users: {

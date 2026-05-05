@@ -11,6 +11,7 @@ import {
   repairOccupationAdminCreatePlatformVariableSeed,
   repairPushNotificationSendsSchema,
   repairVendorPlansSchema,
+  repairProductAttributesSchema,
 } from './config/schemaRepair';
 import { createAdminRoutes } from './modules/admin-core/admin-core.routes';
 import { createUploadRoutes } from './modules/upload/upload.routes';
@@ -40,6 +41,7 @@ async function startServer() {
     await repairPushNotificationSendsSchema();
     await repairMediaLibrarySchema();
     await repairBulkUploadJobsSchema();
+    await repairProductAttributesSchema();
     await repairOccupationAdminCreatePlatformVariableSeed();
     await AppDataSource.initialize();
     console.log('Admin DB connected');

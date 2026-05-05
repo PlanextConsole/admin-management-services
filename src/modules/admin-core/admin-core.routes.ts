@@ -8,6 +8,7 @@ import { createVendorAdminRoutes } from '../vendors/vendor.routes';
 import { createCustomerAdminRoutes } from '../customers/customer.routes';
 import { createCatalogAdminRoutes } from '../catalog/catalog.routes';
 import { createProductsAdminRoutes } from '../products/products.routes';
+import { createProductAttributesAdminRoutes } from '../product-attributes/product-attributes.routes';
 import { createOrdersAdminRoutes } from '../orders/orders.routes';
 import { createOrganizationOrdersAdminRoutes } from '../organization-orders/organization-orders.routes';
 import { createPlatformConfigAdminRoutes } from '../platform-config/platform-config.routes';
@@ -61,6 +62,7 @@ export const createAdminRoutes = (): Router => {
   router.use(createCustomerAdminRoutes());
   router.use(createCatalogAdminRoutes());
   router.use(createProductsAdminRoutes());
+  router.use(createProductAttributesAdminRoutes());
   router.use(createOrdersAdminRoutes());
   router.use(createOrganizationOrdersAdminRoutes());
   router.use(createPlatformConfigAdminRoutes());

@@ -324,6 +324,50 @@ CREATE TABLE IF NOT EXISTS admin_bulk_upload_jobs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 `;
 
+const PRODUCT_ATTRIBUTE_DEFINITIONS_SQL = `
+CREATE TABLE IF NOT EXISTS product_attribute_definitions (
+  id char(36) NOT NULL,
+  name varchar(255) NOT NULL,
+  type varchar(16) NOT NULL DEFAULT 'select',
+  is_active tinyint(1) NOT NULL DEFAULT 1,
+  select_values json NULL,
+  created_at datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  updated_at datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_product_attribute_name (name),
+  KEY idx_product_attribute_active (is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+`;
+
+export async function repairProductAttributesSchema(): Promise<void> {
+  const host = process.env.DB_HOST || 'localhost';
+  const port = parseInt(process.env.DB_PORT || '3306', 10);
+  const user = process.env.DB_USERNAME || 'root';
+  const password = process.env.DB_PASSWORD || 'root@123';
+  const database = process.env.DB_NAME || 'p4u_admin_db';
+
+  let connection: Awaited<ReturnType<typeof createConnection>> | undefined;
+  try {
+    connection = await createConnection({ host, port, user, password, database });
+
+    const [tables] = await connection.query<RowDataPacket[]>(
+      `SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'product_attribute_definitions'`,
+      [database]
+    );
+    if (tables.length) return;
+
+    await connection.query(PRODUCT_ATTRIBUTE_DEFINITIONS_SQL);
+    console.log('[admin-service] Created missing table product_attribute_definitions');
+  } catch (err) {
+    console.warn(
+      '[admin-service] product_attribute_definitions schema repair skipped:',
+      err instanceof Error ? err.message : err
+    );
+  } finally {
+    if (connection) await connection.end().catch(() => undefined);
+  }
+}
+
 export async function repairBulkUploadJobsSchema(): Promise<void> {
   const host = process.env.DB_HOST || 'localhost';
   const port = parseInt(process.env.DB_PORT || '3306', 10);

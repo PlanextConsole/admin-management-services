@@ -15,6 +15,7 @@ import { CatalogServiceItem } from '../modules/catalog/entities/CatalogServiceIt
 import { VendorService } from '../modules/catalog/entities/VendorService';
 import { Product } from '../modules/products/entities/Product';
 import { ProductRequest } from '../modules/products/entities/ProductRequest';
+import { ProductAttributeDefinition } from '../modules/product-attributes/entities/ProductAttributeDefinition';
 import { TaxConfiguration } from '../modules/products/entities/TaxConfiguration';
 import { Order } from '../modules/orders/entities/Order';
 import { Settlement } from '../modules/orders/entities/Settlement';
@@ -66,6 +67,7 @@ export const AppDataSource = new DataSource({
     VendorService,
     Product,
     ProductRequest,
+    ProductAttributeDefinition,
     TaxConfiguration,
     Order,
     Settlement,

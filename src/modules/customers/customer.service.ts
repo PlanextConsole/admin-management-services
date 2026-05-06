@@ -1,12 +1,34 @@
+import { In } from 'typeorm';
 import { AppDataSource } from '../../config/database';
 import { AuditService } from '../admin-core/services/audit.service';
 import { PlatformConfigAdminService } from '../platform-config/platform-config.service';
 import { Customer } from './entities/Customer';
+import { CustomerReferral } from './entities/CustomerReferral';
 import { Coupon } from './entities/Coupon';
 import { Occupation } from './entities/Occupation';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { CreateOccupationDto } from './dto/create-occupation.dto';
 import { UpdateOccupationDto } from './dto/update-occupation.dto';
+
+export type CustomerReferralReportRow = {
+  id: string;
+  createdAt: Date;
+  referralCode: string;
+  status: string;
+  rewardPointsEarned: number;
+  referrerCustomerId: string;
+  referredCustomerId: string;
+  referrerName: string;
+  referrerDisplayId: string;
+  referredName: string;
+  referredEmail: string;
+  referredPhone: string;
+  referredCustomerDisplayId: string;
+  ownCode: string;
+  walletPoints: number;
+  referredStatus: string;
+  referredJoinedAt: Date | null;
+};
 
 export class CustomerAdminService {
   private audit = new AuditService();
@@ -290,5 +312,59 @@ export class CustomerAdminService {
       ipAddress: ip ?? null,
     });
     return row;
+  }
+
+  /** All rows from `customer_referrals` with referred (and referrer) customer fields for admin reporting. */
+  async listCustomerReferralsReport(
+    limit: number,
+    offset: number
+  ): Promise<{ items: CustomerReferralReportRow[]; total: number }> {
+    const refRepo = AppDataSource.getRepository(CustomerReferral);
+    const [refs, total] = await refRepo.findAndCount({
+      order: { createdAt: 'DESC' },
+      take: limit,
+      skip: offset,
+    });
+    if (refs.length === 0) {
+      return { items: [], total };
+    }
+    const custRepo = AppDataSource.getRepository(Customer);
+    const ids = [...new Set(refs.flatMap((r) => [r.referrerCustomerId, r.referredCustomerId]))];
+    const customers = await custRepo.find({ where: { id: In(ids) } });
+    const byId = new Map(customers.map((c) => [c.id, c]));
+
+    const displayId = (cid: string | undefined) => {
+      if (!cid) return '—';
+      const hex = String(cid).replace(/-/g, '');
+      return `CUST-${hex.slice(0, 8).toUpperCase()}`;
+    };
+
+    const items: CustomerReferralReportRow[] = refs.map((ref) => {
+      const referred = byId.get(ref.referredCustomerId);
+      const referrer = byId.get(ref.referrerCustomerId);
+      const meta = (referred?.metadata || {}) as Record<string, unknown>;
+      const ownCode = String(meta.referralCode || meta.referral_code || '').trim();
+      const wallet = Number(meta.wallet ?? meta.walletBalance ?? 0) || 0;
+      return {
+        id: ref.id,
+        createdAt: ref.createdAt,
+        referralCode: ref.referralCode,
+        status: ref.status,
+        rewardPointsEarned: ref.rewardPointsEarned,
+        referrerCustomerId: ref.referrerCustomerId,
+        referredCustomerId: ref.referredCustomerId,
+        referrerName: referrer?.fullName || '—',
+        referrerDisplayId: displayId(ref.referrerCustomerId),
+        referredName: referred?.fullName || '—',
+        referredEmail: referred?.email || '',
+        referredPhone: referred?.phone || '',
+        referredCustomerDisplayId: displayId(ref.referredCustomerId),
+        ownCode: ownCode || '—',
+        walletPoints: wallet,
+        referredStatus: referred?.status || '—',
+        referredJoinedAt: referred?.createdAt ?? null,
+      };
+    });
+    return { items, total };
   }
 }

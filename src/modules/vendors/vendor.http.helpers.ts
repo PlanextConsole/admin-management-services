@@ -29,8 +29,13 @@ export function normalizeVendorWriteBody(body: Record<string, unknown>): Record<
 }
 
 export function serializeVendorRow(v: Vendor): Record<string, unknown> {
+  const normalizedKind = String(v.vendorKind || '').trim().toLowerCase();
+  const normalizedType = String(v.vendorType || '').trim().toUpperCase();
+  const vendorKind = normalizedKind === 'service' || normalizedType === 'SERVICE' ? 'service' : 'product';
+  const vendorType = vendorKind === 'service' ? 'SERVICE' : 'PRODUCT';
   return {
     ...v,
-    vendorType: v.vendorKind === 'service' ? 'SERVICE' : 'PRODUCT',
+    vendorKind,
+    vendorType,
   };
 }

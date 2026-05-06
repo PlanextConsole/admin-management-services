@@ -16,6 +16,16 @@ export function createCustomerAdminRoutes(): Router {
   r.use(requireRole('ADMIN'));
   r.use(requirePermission('customer.admin.manage'));
 
+  r.get('/customerReferrals', async (req: Request, res: Response) => {
+    try {
+      const { limit, offset } = parseLimitOffset(req, { limit: 20, maxLimit: 100 });
+      const { items, total } = await svc.listCustomerReferralsReport(limit, offset);
+      res.json({ items, total, limit, offset });
+    } catch (e: any) {
+      res.status(500).json({ message: e.message });
+    }
+  });
+
   r.get('/customers', async (req: Request, res: Response) => {
     try {
       const { limit, offset } = parseLimitOffset(req, { limit: 20, maxLimit: 100 });

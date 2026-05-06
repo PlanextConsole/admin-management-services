@@ -6,6 +6,7 @@ import { Vendor } from '../modules/vendors/entities/Vendor';
 import { VendorRequest } from '../modules/vendors/entities/VendorRequest';
 import { VendorEnquiry } from '../modules/vendors/entities/VendorEnquiry';
 import { Customer } from '../modules/customers/entities/Customer';
+import { CustomerReferral } from '../modules/customers/entities/CustomerReferral';
 import { Coupon } from '../modules/customers/entities/Coupon';
 import { Occupation } from '../modules/customers/entities/Occupation';
 import { ProductCategory } from '../modules/catalog/entities/ProductCategory';
@@ -58,6 +59,7 @@ export const AppDataSource = new DataSource({
     VendorRequest,
     VendorEnquiry,
     Customer,
+    CustomerReferral,
     Coupon,
     Occupation,
     ProductCategory,

@@ -17,15 +17,24 @@ export class VendorAdminService {
     opts?: { status?: string; vendorKind?: VendorKind }
   ): Promise<{ items: Vendor[]; total: number }> {
     const repo = AppDataSource.getRepository(Vendor);
-    const where: Record<string, unknown> = {};
-    if (opts?.status) where.status = opts.status;
-    if (opts?.vendorKind) where.vendorKind = opts.vendorKind;
-    const [items, total] = await repo.findAndCount({
-      where,
-      order: { createdAt: 'DESC' },
-      take: limit,
-      skip: offset,
-    });
+    const qb = repo.createQueryBuilder('vendor').orderBy('vendor.createdAt', 'DESC').take(limit).skip(offset);
+    if (opts?.status) {
+      qb.andWhere('vendor.status = :status', { status: opts.status });
+    }
+    if (opts?.vendorKind) {
+      if (opts.vendorKind === 'service') {
+        qb.andWhere(
+          '(LOWER(TRIM(COALESCE(vendor.vendorKind, :empty))) = :serviceKind OR UPPER(TRIM(COALESCE(vendor.vendorType, :emptyUpper))) = :serviceType)',
+          { serviceKind: 'service', serviceType: 'SERVICE', empty: '', emptyUpper: '' }
+        );
+      } else {
+        qb.andWhere(
+          '(LOWER(TRIM(COALESCE(vendor.vendorKind, :empty))) = :productKind OR UPPER(TRIM(COALESCE(vendor.vendorType, :emptyUpper))) = :productType)',
+          { productKind: 'product', productType: 'PRODUCT', empty: '', emptyUpper: '' }
+        );
+      }
+    }
+    const [items, total] = await qb.getManyAndCount();
     return { items, total };
   }
 

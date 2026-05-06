@@ -104,8 +104,30 @@ export async function repairCatalogVendorsSchema(): Promise<void> {
     }
 
     try {
+      // Keep vendor kind/type aligned without downgrading legacy SERVICE vendors to PRODUCT.
       await connection.query(
-        `UPDATE catalog_vendors SET vendor_type = IF(LOWER(TRIM(vendor_kind)) = 'service', 'SERVICE', 'PRODUCT')`
+        `UPDATE catalog_vendors
+         SET vendor_kind = 'service'
+         WHERE UPPER(TRIM(COALESCE(vendor_type, ''))) = 'SERVICE'
+           AND LOWER(TRIM(COALESCE(vendor_kind, ''))) <> 'service'`
+      );
+      await connection.query(
+        `UPDATE catalog_vendors
+         SET vendor_kind = 'product'
+         WHERE UPPER(TRIM(COALESCE(vendor_type, ''))) = 'PRODUCT'
+           AND LOWER(TRIM(COALESCE(vendor_kind, ''))) NOT IN ('product', 'service')`
+      );
+      await connection.query(
+        `UPDATE catalog_vendors
+         SET vendor_type = 'SERVICE'
+         WHERE LOWER(TRIM(COALESCE(vendor_kind, ''))) = 'service'
+           AND UPPER(TRIM(COALESCE(vendor_type, ''))) <> 'SERVICE'`
+      );
+      await connection.query(
+        `UPDATE catalog_vendors
+         SET vendor_type = 'PRODUCT'
+         WHERE LOWER(TRIM(COALESCE(vendor_kind, ''))) = 'product'
+           AND UPPER(TRIM(COALESCE(vendor_type, ''))) NOT IN ('PRODUCT', 'SERVICE')`
       );
     } catch (syncErr) {
       console.warn(
